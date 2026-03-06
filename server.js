@@ -39,62 +39,77 @@ const upload = multer({ storage });
 app.get("/", (req, res) => res.send("Makeja Rentals API is running"));
 
 // Add house
-app.post("/api/houses", upload.array("images", 10), (req, res) => {
-  let { title, location, price, size, phone, lat, lng } = req.body;
+app.post("/api/houses", upload.array("images", 10), async (req, res) => {
+  try {
+    let { title, location, price, size, phone, lat, lng } = req.body;
 
-  if (!title || !location || !price || !size || !phone) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-
-  // Convert lat/lng to numbers
-  lat = parseFloat(lat) || null;
-  lng = parseFloat(lng) || null;
-
-  const sql = `INSERT INTO houses (title, location, price, size, phone, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?)`;
-  db.query(sql, [title, location, price, size, phone, lat, lng], (err, result) => {
-    if (err) {
-      console.error("❌ Insert house error:", err);
-      return res.status(500).json({ error: err.message });
+    if (!title || !location || !price || !size || !phone) {
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const houseId = result.insertId;
+    lat = parseFloat(lat) || null;
+    lng = parseFloat(lng) || null;
 
-    if (!req.files || req.files.length === 0) return res.json({ success: true });
+    // Insert house into PostgreSQL
+    const insertHouseQuery = `
+      INSERT INTO houses (title, location, price, size, phone, lat, lng)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id
+    `;
+    const result = await db.query(insertHouseQuery, [title, location, price, size, phone, lat, lng]);
+    const houseId = result.rows[0].id;
 
-    const images = req.files.map(file => [houseId, `/uploads/${file.filename}`]);
-    db.query("INSERT INTO house_images (house_id, image_path) VALUES ?", [images], (err2) => {
-      if (err2) {
-        console.error("❌ Insert images error:", err2);
-        return res.status(500).json({ error: err2.message });
-      }
-      res.json({ success: true });
-    });
-  });
+    // If images uploaded, insert them
+    if (req.files && req.files.length > 0) {
+      const imageValues = req.files.map(file => [houseId, `/uploads/${file.filename}`]);
+      const placeholders = imageValues.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(", ");
+      const flatValues = imageValues.flat();
+
+      const insertImagesQuery = `INSERT INTO house_images (house_id, image_path) VALUES ${placeholders}`;
+      await db.query(insertImagesQuery, flatValues);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Insert house error:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Get houses
-app.get("/api/houses", (req, res) => {
-  db.query("SELECT * FROM houses ORDER BY created_at DESC", (err, houses) => {
-    if (err) return res.status(500).json({ error: err.message });
+app.get("/api/houses", async (req, res) => {
+  try {
+    const housesResult = await db.query("SELECT * FROM houses ORDER BY created_at DESC");
+    const imagesResult = await db.query("SELECT * FROM house_images");
 
-    db.query("SELECT * FROM house_images", (err2, images) => {
-      if (err2) return res.status(500).json({ error: err2.message });
+    const houses = housesResult.rows;
+    const images = imagesResult.rows;
 
-      houses.forEach(h => {
-        h.images = images.filter(i => i.house_id === h.id);
-      });
-
-      res.json(houses);
+    houses.forEach(h => {
+      h.images = images.filter(i => i.house_id === h.id);
     });
-  });
+
+    res.json(houses);
+  } catch (err) {
+    console.error("❌ Get houses error:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Delete house
-app.delete("/api/houses/:id", (req, res) => {
-  db.query("DELETE FROM houses WHERE id = ?", [req.params.id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+app.delete("/api/houses/:id", async (req, res) => {
+  try {
+    const houseId = req.params.id;
+
+    // Delete images first
+    await db.query("DELETE FROM house_images WHERE house_id = $1", [houseId]);
+    await db.query("DELETE FROM houses WHERE id = $1", [houseId]);
+
     res.json({ success: true });
-  });
+  } catch (err) {
+    console.error("❌ Delete house error:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));

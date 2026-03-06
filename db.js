@@ -1,4 +1,3 @@
-// backend/db.js
 import pkg from "pg";
 import dotenv from "dotenv";
 
@@ -14,9 +13,5 @@ export const db = new Pool({
 });
 
 db.connect()
-  .then(() => {
-    console.log("✅ PostgreSQL connected successfully");
-  })
-  .catch((err) => {
-    console.error("❌ PostgreSQL connection failed:", err.message);
-  });
+  .then(() => console.log("✅ PostgreSQL connected successfully"))
+  .catch(err => console.error("❌ PostgreSQL connection error:", err));
