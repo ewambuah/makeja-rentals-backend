@@ -12,6 +12,11 @@ export const db = new Pool({
   }
 });
 
-db.connect()
-  .then(() => console.log("✅ PostgreSQL connected successfully"))
-  .catch(err => console.error("❌ PostgreSQL connection error:", err));
+// Test connection
+db.query("SELECT NOW()")
+  .then(res => {
+    console.log("✅ PostgreSQL connected:", res.rows[0]);
+  })
+  .catch(err => {
+    console.error("❌ PostgreSQL connection failed:", err);
+  });
