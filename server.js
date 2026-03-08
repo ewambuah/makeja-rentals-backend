@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import fs from "fs";
+import path from "path";
 import dotenv from "dotenv";
 import { db } from "./db.js";
 
@@ -18,14 +19,21 @@ app.use(cors({ origin: "*" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve uploads folder
-app.use("/uploads", express.static("uploads"));
+// Absolute path for uploads
+const uploadsPath = path.join(process.cwd(), "uploads");
+
+// Ensure uploads folder exists
+if (!fs.existsSync(uploadsPath)) {
+  fs.mkdirSync(uploadsPath, { recursive: true });
+}
+
+// Serve uploads folder publicly
+app.use("/uploads", express.static(uploadsPath));
 
 // Multer setup
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    if (!fs.existsSync("uploads")) fs.mkdirSync("uploads", { recursive: true });
-    cb(null, "uploads");
+    cb(null, uploadsPath);
   },
   filename: (req, file, cb) => {
     const safeName = file.originalname.replace(/\s+/g, "_");
@@ -56,10 +64,19 @@ app.post("/api/houses", upload.array("images", 10), async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING id
     `;
-    const result = await db.query(insertHouseQuery, [title, location, price, size, phone, lat, lng]);
+    const result = await db.query(insertHouseQuery, [
+      title,
+      location,
+      price,
+      size,
+      phone,
+      lat,
+      lng
+    ]);
+
     const houseId = result.rows[0].id;
 
-    // Insert images safely
+    // Insert images
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         await db.query(
@@ -84,7 +101,10 @@ app.post("/api/houses", upload.array("images", 10), async (req, res) => {
 // ---------------- GET HOUSES ----------------
 app.get("/api/houses", async (req, res) => {
   try {
-    const housesResult = await db.query("SELECT * FROM houses ORDER BY created_at DESC");
+    const housesResult = await db.query(
+      "SELECT * FROM houses ORDER BY created_at DESC"
+    );
+
     const imagesResult = await db.query("SELECT * FROM house_images");
 
     const houses = housesResult.rows.map(h => ({
@@ -93,9 +113,14 @@ app.get("/api/houses", async (req, res) => {
     }));
 
     res.json(houses);
+
   } catch (err) {
     console.error("❌ Get houses error:", err);
-    res.status(500).json({ error: err.message, detail: err.detail, code: err.code });
+    res.status(500).json({
+      error: err.message,
+      detail: err.detail,
+      code: err.code
+    });
   }
 });
 
@@ -105,9 +130,13 @@ app.delete("/api/houses/:id", async (req, res) => {
     const houseId = req.params.id;
 
     // Delete images from filesystem
-    const imagesResult = await db.query("SELECT image_path FROM house_images WHERE house_id = $1", [houseId]);
+    const imagesResult = await db.query(
+      "SELECT image_path FROM house_images WHERE house_id = $1",
+      [houseId]
+    );
+
     imagesResult.rows.forEach(row => {
-      const filePath = `.${row.image_path}`;
+      const filePath = path.join(process.cwd(), row.image_path);
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     });
 
@@ -115,11 +144,18 @@ app.delete("/api/houses/:id", async (req, res) => {
     await db.query("DELETE FROM houses WHERE id = $1", [houseId]);
 
     res.json({ success: true });
+
   } catch (err) {
     console.error("❌ Delete house error:", err);
-    res.status(500).json({ error: err.message, detail: err.detail, code: err.code });
+    res.status(500).json({
+      error: err.message,
+      detail: err.detail,
+      code: err.code
+    });
   }
 });
 
 // Start server
-app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+app.listen(PORT, () =>
+  console.log(`🚀 Server running at http://localhost:${PORT}`)
+);
