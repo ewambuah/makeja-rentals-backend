@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "main": "server.js",
+  "license": "ISC",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
