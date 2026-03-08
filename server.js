@@ -71,9 +71,13 @@ app.post("/api/houses", upload.array("images", 10), async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error("❌ Insert house error:", err);
-    res.status(500).json({ error: err.message });
-  }
+  console.error("❌ Get houses error:", err);
+  res.status(500).json({
+    error: err.message,
+    detail: err.detail,
+    code: err.code
+  });
+}
 });
 
 // Get houses
