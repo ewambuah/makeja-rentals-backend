@@ -33,12 +33,14 @@ const storage = multer.diskStorage({
     cb(null, Date.now() + "-" + file.originalname);
   }
 });
+
 const upload = multer({ storage });
 
 // Health check
 app.get("/", (req, res) => res.send("Makeja Rentals API is running"));
 
-// Add house
+
+// ADD HOUSE
 app.post("/api/houses", upload.array("images", 10), async (req, res) => {
   try {
     let { title, location, price, size, phone, lat, lng } = req.body;
@@ -50,41 +52,74 @@ app.post("/api/houses", upload.array("images", 10), async (req, res) => {
     lat = parseFloat(lat) || null;
     lng = parseFloat(lng) || null;
 
-    // Insert house into PostgreSQL
     const insertHouseQuery = `
       INSERT INTO houses (title, location, price, size, phone, lat, lng)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING id
     `;
-    const result = await db.query(insertHouseQuery, [title, location, price, size, phone, lat, lng]);
+
+    const result = await db.query(insertHouseQuery, [
+      title,
+      location,
+      price,
+      size,
+      phone,
+      lat,
+      lng
+    ]);
+
     const houseId = result.rows[0].id;
 
-    // If images uploaded, insert them
+    // Insert images
     if (req.files && req.files.length > 0) {
-      const imageValues = req.files.map(file => [houseId, `/uploads/${file.filename}`]);
-      const placeholders = imageValues.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(", ");
+
+      const imageValues = req.files.map(file => [
+        houseId,
+        `/uploads/${file.filename}`
+      ]);
+
+      const placeholders = imageValues
+        .map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`)
+        .join(", ");
+
       const flatValues = imageValues.flat();
 
-      const insertImagesQuery = `INSERT INTO house_images (house_id, image_path) VALUES ${placeholders}`;
+      const insertImagesQuery = `
+        INSERT INTO house_images (house_id, image_path)
+        VALUES ${placeholders}
+      `;
+
       await db.query(insertImagesQuery, flatValues);
     }
 
     res.json({ success: true });
+
   } catch (err) {
-  console.error("❌ Get houses error:", err);
-  res.status(500).json({
-    error: err.message,
-    detail: err.detail,
-    code: err.code
-  });
-}
+
+    console.error("❌ Insert house error:", err);
+
+    res.status(500).json({
+      error: err.message,
+      detail: err.detail,
+      code: err.code
+    });
+
+  }
 });
 
-// Get houses
+
+// GET HOUSES
 app.get("/api/houses", async (req, res) => {
+
   try {
-    const housesResult = await db.query("SELECT * FROM houses ORDER BY created_at DESC");
-    const imagesResult = await db.query("SELECT * FROM house_images");
+
+    const housesResult = await db.query(
+      "SELECT * FROM houses ORDER BY created_at DESC"
+    );
+
+    const imagesResult = await db.query(
+      "SELECT * FROM house_images"
+    );
 
     const houses = housesResult.rows;
     const images = imagesResult.rows;
@@ -94,26 +129,56 @@ app.get("/api/houses", async (req, res) => {
     });
 
     res.json(houses);
+
   } catch (err) {
+
     console.error("❌ Get houses error:", err);
-    res.status(500).json({ error: err.message });
+
+    res.status(500).json({
+      error: err.message,
+      detail: err.detail,
+      code: err.code
+    });
+
   }
+
 });
 
-// Delete house
+
+// DELETE HOUSE
 app.delete("/api/houses/:id", async (req, res) => {
+
   try {
+
     const houseId = req.params.id;
 
-    // Delete images first
-    await db.query("DELETE FROM house_images WHERE house_id = $1", [houseId]);
-    await db.query("DELETE FROM houses WHERE id = $1", [houseId]);
+    await db.query(
+      "DELETE FROM house_images WHERE house_id = $1",
+      [houseId]
+    );
+
+    await db.query(
+      "DELETE FROM houses WHERE id = $1",
+      [houseId]
+    );
 
     res.json({ success: true });
+
   } catch (err) {
+
     console.error("❌ Delete house error:", err);
-    res.status(500).json({ error: err.message });
+
+    res.status(500).json({
+      error: err.message,
+      detail: err.detail,
+      code: err.code
+    });
+
   }
+
 });
 
-app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
+});
